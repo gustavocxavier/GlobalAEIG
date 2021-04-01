@@ -1,4 +1,7 @@
 0_data/*
+0_data/economatica/*
+0_data/trws/*
+0_data/wrds/*
 1_code/_ignore_test
 1_code/*_ignore_*
 2_pipeline/0_temp/*
@@ -6,17 +9,25 @@
 2_pipeline/2_out/*
 3_output/*
 _ignore_*
+
+.gitignore
+
 # History files
 .Rhistory
 .Rapp.history
+
 # Session Data files
 .RData
+
 # User-specific files
 .Ruserdata
+
 # Example code in package build process
 *-Ex.R
+
 # Output files from R CMD build
 /*.tar.gz
+
 # Output files from R CMD check
 /*.Rcheck/
 # RStudio files

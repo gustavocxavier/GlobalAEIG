@@ -3,7 +3,7 @@
 Overview
 --------
 
-This repository contains code to create the dataset for my work in progress called `Global Aggregate Expected Investment Growth`, I analyze how the aggregate investment plans, conditioned to different life-cycle stages, relates to future wide market returns accross different countries. To reproduce, you can either clone this repository with git, or download the entire content as a zip file by clicking on the `Download ZIP` button on `Code` menu above. Than open `start.R` in your R studio.
+This repository contains code to create the dataset for my work in progress called `Global Aggregate Expected Investment Growth`, which I analyze how the aggregate investment plans, conditioned to different life-cycle stages, relates to future wide market returns accross different countries. To reproduce, you can either clone this repository with git, or download the entire content as a zip file by clicking on the `Download ZIP` button on `Code` menu above. Than open `start.R` in your R studio.
 
 CORE PRINCIPLE:
 --------------

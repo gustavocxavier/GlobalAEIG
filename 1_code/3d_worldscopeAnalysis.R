@@ -15,21 +15,26 @@ db_m[P==0, P := NA]
 db_m <- na.omit(db_m)
 db_m[, R := log(P/shift(P)), by = ticker]
 db_m[ticker=="PETR4"]
+db_m[ticker=="VALE3"]
+
 
 ## Organize ws_funda -----------------------------------------------------------
 ws_funda <- readRDS("0_data/trws/raw_ws_funda.rds")
 
 ws_funda <- ws_funda %>%
-  select(-cusip, -isin, ws_id=item6105, -ibes_ticker, -type) %>% 
+  select(-cusip, -isin, ws_id=item6105, -ibes_ticker, -type) %>%
   na.omit
 
 # ws_funda %>% group_by(nation) %>%
-#   count %>% filter(n>400) %>% arrange(-n) %>% 
+#   count %>% filter(n>400) %>% arrange(-n) %>%
 #   data.frame
 # TODO: Checar dados TRWS x Economatica
+# ws_funda[ticker=="PETR4"]
+# ws_funda[ticker=="VALE3"]
+
 summary(ws_funda$cfo)
 ws_funda[, cfi := -cfi]
-
+ws_funda
 ## Life Cycle - DCS ------------------------------------------------------------
 # Dickinson (2011) classification scheme (DCS) - 8 groups (DCS8g)
 ws_funda <- ws_funda %>%
@@ -41,7 +46,7 @@ ws_funda <- ws_funda %>%
                            (cfo >  0 & cfi >  0 & cff <= 0) ~ 6,
                            (cfo <= 0 & cfi >  0 & cff >  0) ~ 7,
                            (cfo <= 0 & cfi >  0 & cff <= 0) ~ 8,
-                           TRUE ~ 0)) # %>% 
+                           TRUE ~ 0)) # %>%
 # mutate(DCS8g_name = case_when((oancf <= 0 & ivncf <= 0 & fincf >  0) ~ "1 Introduction",
 #                               (oancf >  0 & ivncf <= 0 & fincf >  0) ~ "2       Growth",
 #                               (oancf >  0 & ivncf <= 0 & fincf <= 0) ~ "3       Mature",
@@ -50,23 +55,23 @@ ws_funda <- ws_funda %>%
 #                               (oancf >  0 & ivncf >  0 & fincf <= 0) ~ "6    Shake-Out",
 #                               (oancf <= 0 & ivncf >  0 & fincf >  0) ~ "7      Decline",
 #                               (oancf <= 0 & ivncf >  0 & fincf <= 0) ~ "8      Decline",
-#                               TRUE ~ "        Failed")) %>%   
-# mutate(DCS8g_name = as.factor(DCS8g_name)) 
+#                               TRUE ~ "        Failed")) %>%
+# mutate(DCS8g_name = as.factor(DCS8g_name))
 
 # Dickinson (2011) classification scheme (DCS) - 4 groups
-ws_funda <- ws_funda %>% 
+ws_funda <- ws_funda %>%
   mutate(DCS = case_when(DCS8g <= 3 ~ DCS8g,
-                         DCS8g >= 4 ~ 4)) %>% 
+                         DCS8g >= 4 ~ 4)) %>%
   mutate(lcycle = case_when((DCS == 1) ~ "Introduction",
                               (DCS == 2) ~ "Growth",
                               (DCS == 3) ~ "Mature",
-                              (DCS == 4) ~ "Shake-Out/Decline")) %>% 
+                              (DCS == 4) ~ "Shake-Out/Decline")) %>%
   mutate(lcycle = as.factor(lcycle))
 
 ## Investment Growth -----------------------------------------------------------
-ws_funda <- ws_funda %>% arrange(nation, ticker, date) %>% 
+ws_funda <- ws_funda %>% arrange(nation, ticker, date) %>%
   group_by(ws_id) %>%
-  mutate(IG = log(capex / dplyr::lag(capex))) %>% ungroup %>% 
+  mutate(IG = log(capex / dplyr::lag(capex))) %>% ungroup %>%
   filter(is.finite(IG)) %>% as.data.table
 # ws_funda
 
@@ -94,8 +99,8 @@ ws_funda
 tmp <- ws_funda %>% select(nation, year, ticker, ws_id, IGt1, IG, cfo, log_Q) %>% na.omit
 eig_m <- db_m %>%
   left_join(tmp, by = c("year", "ticker")) %>% na.omit %>%
-  select(nation, year, month, ticker, ws_id, IGt1, IG, everything()) %>% 
-  select(-P, -R) %>% 
+  select(nation, year, month, ticker, ws_id, IGt1, IG, everything()) %>%
+  select(-P, -R) %>%
   left_join(select(ws_stock, year, ws_id, ev))
 eig_m
 
@@ -129,9 +134,9 @@ eig_m <- eig_m[is.finite(log_Q)]
 eig_m <- eig_m[is.finite(ev)]
 
 nations <- ws_funda %>%
-  filter(nation != "UNITED STATES") %>% 
+  filter(nation != "UNITED STATES") %>%
   group_by(nation) %>%
-  count %>% filter(n>1000) %>% arrange(-n) %>% 
+  count %>% filter(n>1000) %>% arrange(-n) %>%
   data.frame
 nations <- sort(unique(nations$nation))
 
@@ -143,7 +148,7 @@ bEIG <- eig_m[nation %in% nations,list(
   log_Q     = round(coef(   lm(IGt1 ~ IG + MOM + cfo + log_Q, weights = ev))["log_Q"],3)
 ), by=c("nation", "year", "month")][order(nation, year, month)]
 
-computeAverageSlopes <- function(x, rollingWindow=52, minimum=30) {
+computeAverageSlopes <- function(x, rollingWindow=60, minimum=24) {
   frollmean(x, c(rep(NA,minimum-1),
                  minimum:rollingWindow,
                  rep(rollingWindow,length(x)-rollingWindow)
@@ -162,29 +167,47 @@ eig2 <- eig_m %>%
   inner_join(bEIG[,.(nation, year, month, b0, bIG, bMOM, bcfo, blog_Q)], by = c("nation", "year", "month")) %>%
   setDT
 eig2[, EIG := b0 + bIG * IG + bMOM * MOM + bcfo * cfo + blog_Q *log_Q]
+
+## Descriptive Statistics ------------------------------------------------------
+classification <- readxl::read_xlsx("2_pipeline/2_out/3d_EM_DM.xlsx",
+                                    col_names = c("nation", "classification"),
+                                    skip = 1)
+as_tibble(eig2) %>%
+  # group_by(year, month) %>%
+  filter(is.finite(EIG)) %>%
+  left_join(ws_funda %>% select(year, ws_id, lcycle=DCS)) %>%
+  left_join(classification) %>%
+  filter(lcycle==2 | lcycle==3) %>%
+  group_by(classification, lcycle) %>%
+  summarise(mean = mean(EIG),
+            sd = sd(EIG))
+
+  summarise(AEIG = weighted.mean(EIG, ev)) %>%
+  arrange(nation, year, month) %>% as.data.table
+
 ## Portfolio Analysis ----------------------------------------------------------
 
 ## AEIG All Stocks -------------------------------------------------------------
 as_tibble(eig2) %>% group_by(nation, year, month) %>%
-  filter(is.finite(EIG)) %>% 
+  filter(is.finite(EIG)) %>%
   summarise(AEIG = weighted.mean(EIG, ev)) %>%
   arrange(nation, year, month) %>% as.data.table -> AEIG
 # AEIG %>% filter(nation=="BRAZIL") %>% data.frame
 
 ## AEIG conditioned to life cycle ----------------------------------------------
 as_tibble(eig2) %>%
-  left_join(ws_funda %>% select(year, ws_id, lcycle=DCS)) %>% 
+  left_join(ws_funda %>% select(year, ws_id, lcycle=DCS)) %>%
   group_by(lcycle, nation, year, month) %>%
-  filter(is.finite(EIG)) %>% 
+  filter(is.finite(EIG)) %>%
   summarise(AEIG = weighted.mean(EIG, ev)) %>%
   arrange(nation, year, month) %>% as.data.table -> AEIGlc
 AEIGlc %>% group_by(lcycle) %>% count
 
 ## Wide market return ----------------------------------------------------------
-mkt <- db_m %>% 
+mkt <- db_m %>%
   select(year, month, ticker, R) %>%
   left_join(select(ws_funda, year, ticker, nation, mv)) %>%
-  select(nation, year, month, everything()) %>% na.omit %>% 
+  select(nation, year, month, everything()) %>% na.omit %>%
   arrange(nation, year, month)
 mkt
 
@@ -193,13 +216,13 @@ mkt %>% filter(nation == "UNITED KINGDOM")
 
 as_tibble(mkt) %>% group_by(nation, year, month) %>%
   summarise(ewret = mean(R),
-            vwret = weighted.mean(R, mv)) %>% ungroup %>% 
+            vwret = weighted.mean(R, mv)) %>% ungroup %>%
   arrange(nation, year, month) %>% as.data.table -> mkt
-
+mkt
 
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%
-  group_by(nation) %>% 
+  group_by(nation) %>%
   mutate(AEIG = dplyr::lag(AEIG)) %>%
   select(year, month, AEIG, MKT=vwret) %>% na.omit
 setDT(lmdata)
@@ -211,28 +234,39 @@ lmdata[, MKT3Y := Reduce(`+`, shift(MKT, -(0:35))), by=nation]
 lmdata[, MKT5Y := Reduce(`+`, shift(MKT, -(0:59))), by=nation]
 lmdata
 
-# ## Test Correlation of Wide Market Return and IBOVESPA
-# lmdata %>% filter(nation=="BRAZIL") %>% as.data.table
-# tmp <- read.csv("0_data/BVSP.csv") %>% 
-#   mutate(bovespa = log(Adj.Close/dplyr::lag(Adj.Close))) %>%
-#   mutate(year = year(Date), month = month(Date)) %>% 
-#   as.data.table %>% 
-#   select(year, month, bovespa) %>%
-#   left_join(lmdata %>% filter(nation=="BRAZIL")) %>% na.omit
-# cor(tmp[,c(3,5,6)])
+## Test Correlation of Wide Market Return and IBOVESPA
+lmdata %>% filter(nation=="BRAZIL") %>% as.data.table
+tmp <- read.csv("0_data/BVSP.csv") %>%
+  mutate(bovespa = log(Adj.Close/dplyr::lag(Adj.Close))) %>%
+  mutate(year = year(Date), month = month(Date)) %>%
+  as.data.table %>%
+  select(year, month, bovespa) %>%
+  left_join(lmdata %>% filter(nation=="BRAZIL")) %>% na.omit
+
+cor.test(tmp$bovespa, tmp$MKT)
+cor.test(tmp$bovespa, tmp$AEIG)
+cor.test(tmp$AEIG, tmp$MKT)
+
+tmp <- tmp %>% select(AEIG_Brasil=AEIG,
+                      MKT_ibovespa=bovespa,
+                      MKT_calculated=MKT) %>% cor %>% round(2)
+tmp[upper.tri(tmp)]<-""
+tmp <- as.data.frame(tmp)
+tmp
+print(xtable::xtable(tmp, type="html", label="Tab3CorIbov"))
 
 # ## Test Correlation between MKT return and AEIG
 # lmdata %>% group_by(nation) %>%
 #   summarise(correl = cor(MKT, AEIG),
 #             abscor = abs(cor(MKT, AEIG))) %>%
 #   arrange(-abscor) %>% as.data.frame
-# 
+#
 # lmdata %>% filter(nation == "UNITED KINGDOM") %>% as.data.frame
 
 ## In Sample Analysis AEIG DM x EM ---------------------------------------------
 lmdata <- mkt %>%
   left_join(AEIG) %>%
-  group_by(nation) %>% mutate(AEIG = dplyr::lag(AEIG)) %>%  
+  group_by(nation) %>% mutate(AEIG = dplyr::lag(AEIG)) %>%
   select(year, month, AEIG, MKT=vwret) %>% na.omit
 setDT(lmdata)
 lmdata[, MKT3M := Reduce(`+`, shift(MKT, -( 0:2))), by=nation]
@@ -250,23 +284,24 @@ classification <- readxl::read_xlsx("2_pipeline/2_out/3d_EM_DM.xlsx",
 
 resultsAEIG <- lmdata %>% group_by(nation) %>%
   # do(fitNation = tidy(lm(MKT   ~ AEIG, data = .))) %>%
-  # do(fitNation = tidy(lm(MKT3M ~ AEIG, data = .))) %>% 
-  # do(fitNation = tidy(lm(MKT6M ~ AEIG, data = .))) %>% 
-  do(fitNation = tidy(lm(MKT1Y ~ AEIG, data = .))) %>% 
-  # do(fitNation = tidy(lm(MKT2Y ~ AEIG, data = .))) %>% 
-  # do(fitNation = tidy(lm(MKT3Y ~ AEIG, data = .))) %>% 
+  # do(fitNation = tidy(lm(MKT3M ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT6M ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT1Y ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT2Y ~ AEIG, data = .))) %>%
+  do(fitNation = tidy(lm(MKT3Y ~ AEIG, data = .))) %>%
   tidyr::unnest(fitNation)
 
 resultsAEIG %>%
-  left_join(classification) %>% 
-  filter(term=="AEIG") %>% filter(abs(statistic)<2) %>% data.frame
+  left_join(classification) %>%
+  filter(term=="AEIG") %>%
+  # filter(abs(statistic)<2) %>%
+  data.frame
 
 resultsAEIG %>%
-  left_join(classification) %>% 
-  filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
+  left_join(classification) %>%
+  filter(term=="AEIG") %>%
+  filter(abs(statistic)>2) %>%
   group_by(classification) %>% count
-
-
 
 library(broom)
 results <- lmdata %>% group_by(nation) %>%
@@ -291,7 +326,7 @@ resultsAEIG %>% filter(abs(statistic)>2) %>% group_by(h, classification) %>% cou
 
 ## In Sample Analysis AEIG Growth Conditioned ----------------------------------
 lmdataG <- mkt %>% left_join(AEIGlc %>% filter(lcycle == 2)) %>%
-  group_by(nation) %>% 
+  group_by(nation) %>%
   mutate(AEIG = dplyr::lag(AEIG)) %>%
   select(year, month, AEIG, MKT=vwret) %>% na.omit
 setDT(lmdataG)
@@ -312,15 +347,15 @@ tmp <- lmdataG %>% group_by(nation) %>% do(fitNation = tidy(lm(MKT6M   ~ AEIG, d
 tmp <- lmdataG %>% group_by(nation) %>% do(fitNation = tidy(lm(MKT1Y   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% filter(term=="AEIG") %>% mutate(h = 12); results <- rbind(results, tmp)
 
 tmp <- lmdataG %>% group_by(nation) %>% do(fitNation = tidy(lm(MKT2Y   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% filter(term=="AEIG") %>% mutate(h = 24); results <- rbind(results, tmp)
-# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : 
+# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) :
 #   0 (non-NA) cases
 
 tmp <- lmdataG %>% group_by(nation) %>% do(fitNation = tidy(lm(MKT3Y   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% filter(term=="AEIG") %>% mutate(h = 36); results <- rbind(results, tmp)
-# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : 
+# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) :
 #   0 (non-NA) cases
 
 tmp <- lmdataG %>% group_by(nation) %>% do(fitNation = tidy(lm(MKT5Y   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% filter(term=="AEIG") %>% mutate(h = 60); results <- rbind(results, tmp)
-# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : 
+# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) :
 #   0 (non-NA) cases
 
 resultsAEIGg <- results ; rm(results)
@@ -331,12 +366,14 @@ classification <- readxl::read_xlsx("2_pipeline/2_out/3d_EM_DM.xlsx",
 #classification
 
 resultsAEIGg <- resultsAEIGg %>% left_join(classification)
-resultsAEIGg %>% filter(abs(statistic)>2) %>% data.frame
-resultsAEIGg %>% filter(abs(statistic)>2) %>% group_by(h, classification) %>% count
+resultsAEIGg %>% filter(abs(statistic)>1.96) %>% data.frame
+resultsAEIGg %>%
+  # filter(abs(statistic)>1.96) %>%
+  group_by(h, classification) %>% count
 
 ## In Sample Analysis AEIG Mature Conditioned ----------------------------------
 lmdataM <- mkt %>% left_join(AEIGlc %>% filter(lcycle==3)) %>%
-  group_by(nation) %>% 
+  group_by(nation) %>%
   mutate(AEIG = dplyr::lag(AEIG)) %>%
   select(year, month, AEIG, MKT=vwret) %>% na.omit
 setDT(lmdataM)
@@ -378,7 +415,7 @@ tmp2 <- lmdata %>% group_by(nation) %>% do(fitNation = glance(lm(MKT1Y ~ AEIG, d
 rm(tmp2)
 resultsAEIG <- resultsAEIG %>%
   left_join(tmp, by=c("nation", "h")) %>%
-  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>% 
+  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>%
   arrange(h, emdm, nation)
 
 tmp  <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 1)
@@ -387,16 +424,16 @@ tmp2 <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT6M ~ AEIG, 
 tmp2 <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT1Y ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 12); tmp <- rbind(tmp, tmp2)
 tmp2 <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT2Y ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 24); tmp <- rbind(tmp, tmp2)
 tmp2 <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT3Y ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 36); tmp <- rbind(tmp, tmp2)
-# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : 
+# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) :
 #   0 (non-NA) casesrm(tmp2)
-# 
+#
 tmp2 <- lmdataG %>% group_by(nation) %>% do(fitNation = glance(lm(MKT5Y ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 60); tmp <- rbind(tmp, tmp2)
-# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : 
+# Error in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) :
 #   0 (non-NA) casesrm(tmp2)
-# 
+#
 resultsAEIGg <- resultsAEIGg %>%
   left_join(tmp, by=c("nation", "h")) %>%
-  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>% 
+  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>%
   arrange(h, emdm, nation)
 
 tmp  <- lmdataM %>% group_by(nation) %>% do(fitNation = glance(lm(MKT   ~ AEIG, data = .))) %>% tidyr::unnest(fitNation) %>% select(nation, adj.r.squared, nobs) %>% mutate(h = 1)
@@ -409,12 +446,12 @@ tmp2 <- lmdataM %>% group_by(nation) %>% do(fitNation = glance(lm(MKT5Y ~ AEIG, 
 rm(tmp2)
 resultsAEIGm <- resultsAEIGm %>%
   left_join(tmp, by=c("nation", "h")) %>%
-  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>% 
+  select(h, emdm = classification , nation, estimate, statistic, p.value, adj.r2 = adj.r.squared, nobs) %>%
   arrange(h, emdm, nation)
 
-## Tabelas ---------------------------------------------------------------------
+### Tabelas --------------------------------------------------------------------
 
-# H3a Mature > Growth
+## H3a Mature > Growth ---------------------------------------------------------
 results <- rbind(resultsAEIGg %>% mutate(lcycle = "Growth"),
                  resultsAEIGm %>% mutate(lcycle = "Mature"))
 
@@ -433,18 +470,23 @@ tmp %>% left_join(tmp2) %>% mutate(total = signif + non_signif)
 
 results %>%
   group_by(h, lcycle) %>%
-  summarise(adj.r2 = round(abs(mean(statistic, na.rm = T)),2)) %>% 
+  summarise(adj.r2 = round(abs(mean(statistic, na.rm = T)),2)) %>%
   as.data.frame
 
 results %>%
-  filter(abs(statistic)>=1.96) %>% 
-  group_by(h, lcycle) %>%
-  summarise(adj.r2 = round(abs(mean(adj.r2)*100),2)) %>% 
+  filter(abs(statistic)>=1.96) %>%
+  group_by(h, lcycle) %>% count
+  summarise(adj.r2 = round(abs(mean(adj.r2)*100),2)) %>%
   as.data.frame
 
 
-# H3b DM > EM
-resultsAEIG %>% filter(abs(statistic)>2) %>% group_by(h, emdm) %>% count
+## H3b DM > EM ------------------------------------------------------------------
+resultsAEIG %>%
+  # filter(abs(statistic)>=1.96) %>%
+  mutate(sig = abs(statistic)>=1.96) %>%
+  group_by(h, emdm, sig) %>%
+  summarise(n = n()) %>% mutate(freq = n / sum(n)) %>% select(sig, freq)
+resultsAEIG %>% filter(abs(statistic)>=1.96) %>% group_by(h, emdm) %>% count
 resultsAEIG %>% group_by(h, emdm) %>% summarise(adj.r2 = abs(mean(adj.r2)*100))
 
 ## Export Tables ---------------------------------------------------------------

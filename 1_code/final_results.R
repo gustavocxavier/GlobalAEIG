@@ -216,9 +216,12 @@ wb_data = WDI(start=1994, end=2019,
               # country='all',
               country=wb_countries$iso2c,
               indicator= c(
+                ## Control Variables
                 interest_rate = 'FR.INR.DPST',              # Deposit interest rate (%)
                 inflation = 'FP.CPI.TOTL.ZG',               # Inflation, consumer prices (annual %)
                 risk_premium = 'FR.INR.RISK',               # Risk premium on lending (lending rate minus treasury bill rate, %)
+
+                ## Market Development Measures
                 stockMktCapGDP = 'GFDD.DM.01',              # Stock market capitalization to GDP (%)
                 stockMktCapGDP_2 = 'CM.MKT.LCAP.GD.ZS',     # Market capitalization of listed domestic companies (% of GDP)
                 listedDomesticCompanies = 'CM.MKT.LDOM.NO', # Listed domestic companies, total

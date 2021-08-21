@@ -220,6 +220,7 @@ wb_data = WDI(start=1994, end=2019,
                 interest_rate = 'FR.INR.DPST',              # Deposit interest rate (%)
                 inflation = 'FP.CPI.TOTL.ZG',               # Inflation, consumer prices (annual %)
                 risk_premium = 'FR.INR.RISK',               # Risk premium on lending (lending rate minus treasury bill rate, %)
+                # risk_premium = 'FR.INR.RISK',               # Risk premium on lending (lending rate minus treasury bill rate, %)
 
                 ## Market Development Measures
                 stockMktCapGDP = 'GFDD.DM.01',              # Stock market capitalization to GDP (%)
@@ -233,7 +234,20 @@ wb_data = WDI(start=1994, end=2019,
 
 wb_data
 saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
+wb_data$risk_premium <- NULL # Too many NA
 
+wb_data <- wb_data %>% group_by(country) %>%
+  mutate(
+    legalRights = case_when(
+      is.na(legalRights) ~ mean(legalRights, na.rm = T),
+      TRUE ~ legalRights
+    )
+  ) %>%
+  mutate(legalRights = round(legalRights))
+attr(wb_data[["legalRights"]], "label") = "Strength of legal rights index (0=weak to 12=strong)"
+
+saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
+wb_data <- readRDS("2_pipeline/2_out/wb_data.rds")
 
 
 ## In sample prediction --------------------------------------------------------

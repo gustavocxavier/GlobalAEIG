@@ -232,8 +232,6 @@ wb_data = WDI(start=1994, end=2019,
               )) %>%
   as_tibble
 
-wb_data
-saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
 wb_data$risk_premium <- NULL # Too many NA
 
 wb_data <- wb_data %>% group_by(country) %>%
@@ -245,8 +243,8 @@ wb_data <- wb_data %>% group_by(country) %>%
   ) %>%
   mutate(legalRights = round(legalRights))
 attr(wb_data[["legalRights"]], "label") = "Strength of legal rights index (0=weak to 12=strong)"
-
 saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
+
 wb_data <- readRDS("2_pipeline/2_out/wb_data.rds")
 
 

@@ -201,6 +201,37 @@ as_tibble(mkt) %>% group_by(nation, year, month) %>%
             vwret = weighted.mean(R, mv)) %>% ungroup %>%
   arrange(nation, year, month) %>% as.data.table -> mkt
 
+## Load world bank Data --------------------------------------------------------
+library(WDI)
+new_wdi_cache <- WDIcache()
+
+wb_countries <- WDI(country = 'all', start = 2010, end = 2010) %>%
+  mutate(nation = toupper(country)) %>%
+  select(iso2c, nation) %>%
+  filter(nation %in% nations) %>%
+  as_tibble
+
+wb_data = WDI(start=1994, end=2019,
+              # country='BR',
+              # country='all',
+              country=wb_countries$iso2c,
+              indicator= c(
+                interest_rate = 'FR.INR.DPST',              # Deposit interest rate (%)
+                inflation = 'FP.CPI.TOTL.ZG',               # Inflation, consumer prices (annual %)
+                risk_premium = 'FR.INR.RISK',               # Risk premium on lending (lending rate minus treasury bill rate, %)
+                stockMktCapGDP = 'GFDD.DM.01',              # Stock market capitalization to GDP (%)
+                stockMktCapGDP_2 = 'CM.MKT.LCAP.GD.ZS',     # Market capitalization of listed domestic companies (% of GDP)
+                listedDomesticCompanies = 'CM.MKT.LDOM.NO', # Listed domestic companies, total
+                volTradedGDP = 'CM.MKT.TRAD.GD.ZS',         # Stocks traded, total value (% of GDP)
+                stockTradedGDP = 'GFDD.DM.02',              # Stock market total value traded to GDP (%)
+                legalRights = 'IC.LGL.CRED.XQ'              # Strength of legal rights index (0=weak to 12=strong)
+              )) %>%
+  as_tibble
+
+wb_data
+saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
+
+
 
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%

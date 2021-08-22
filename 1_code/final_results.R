@@ -235,19 +235,96 @@ wb_data = WDI(start=1994, end=2019,
 
 wb_data$risk_premium <- NULL # Too many NA
 
+saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
+
+wb_data <- readRDS("2_pipeline/2_out/wb_data.rds")
+
+## Load OECD data --------------------------------------------------------------
+
+## Get Interest Rate
+oecd_interest <- read.csv("0_data/oecd/oecd_interest_rate_data.csv")
+# https://stats.oecd.org/viewhtml.aspx?datasetcode=MEI_FIN&lang=en#
+oecd_interest <- as_tibble(oecd_interest)
+filter_interest <- unique(oecd_interest$Subject)[4]
+colnames(oecd_interest)[1] <- "SUBJECT"
+oecd_interest <- oecd_interest %>%
+  filter(SUBJECT == "IRSTCI") %>%
+  select(LOCATION, Country, Time, Value)
+
+## Get Inflation (CPI)
+oecd_cpi <- read.csv("0_data/oecd/oecd_prices_cpi_data.csv")
+# https://stats.oecd.org/viewhtml.aspx?datasetcode=PRICES_CPI&lang=en#
+oecd_cpi <- as_tibble(oecd_cpi)
+colnames(oecd_cpi)[1] <- "LOCATION"
+# oecd_cpi %>% filter(stringr::str_detect(Subject, "CPI.*All items")) %>% View
+oecd_cpi <- oecd_cpi %>%
+  filter(SUBJECT == "CPALTT01") %>%
+  filter(MEASURE == "GY") %>% # IXOB for index / GY for Percentage change
+  select(LOCATION, Country, Time, Value)
+
+oecd_cpi      # Inflation
+oecd_interest # Interest Rate
+
+## Solution for Missing Values in World Bank Data ------------------------------
+
+## Merge stockMktCapGDP with stockMktCapGDP_2 (Correlation = 0.9733146)
+wb_data %>% select(stockMktCapGDP, stockMktCapGDP_2) %>% na.omit %>% cor
+setDT(wb_data)
+wb_data[is.na(stockMktCapGDP) & !is.na(stockMktCapGDP_2), stockMktCapGDP := stockMktCapGDP_2]
+wb_data <- wb_data %>% select(-stockMktCapGDP_2) %>% as_tibble
+
+## Merge volTradedGDP with stockTradedGDP (Correlation = 0.9499892)
+wb_data %>% select(volTradedGDP, stockTradedGDP) %>% na.omit %>% cor
+setDT(wb_data)
+wb_data[is.na(volTradedGDP) & !is.na(stockTradedGDP), volTradedGDP := stockTradedGDP]
+wb_data <- wb_data %>% select(-stockTradedGDP) %>% as_tibble
+
+wb_data %>% select(volTradedGDP, stockTradedGDP) %>% na.omit %>% cor
+
+## Check all NA
+wb_data %>% group_by(country) %>%
+  summarise(
+    na_interest_rate    = sum(is.na(interest_rate   )),
+    na_inflation        = sum(is.na(inflation       )),
+    na_stockMktCapGDP   = sum(is.na(stockMktCapGDP  )),
+    na_volTradedGDP     = sum(is.na(volTradedGDP    )),
+    na_legalRights      = sum(is.na(legalRights     ))
+  ) %>% as.data.frame
+
+wb_data %>% filter(country=="Vietnam") %>% as.data.frame
+wb_data %>% filter(country=="Israel") %>% as.data.frame
+wb_data %>% filter(country=="Denmark") %>% as.data.frame
+wb_data %>% filter(country=="Finland") %>% as.data.frame
+wb_data %>% filter(country=="Sweden") %>% as.data.frame
+wb_data %>% filter(country=="Brazil") %>% as.data.frame
+
+## Merge with OECD data for high-income countries
+# Try isreal here
+
+
+
+## Replace legalRights NA for the median of the country
 wb_data <- wb_data %>% group_by(country) %>%
   mutate(
     legalRights = case_when(
-      is.na(legalRights) ~ mean(legalRights, na.rm = T),
+      is.na(legalRights) ~ median(legalRights, na.rm = T),
       TRUE ~ legalRights
     )
   ) %>%
   mutate(legalRights = round(legalRights))
 attr(wb_data[["legalRights"]], "label") = "Strength of legal rights index (0=weak to 12=strong)"
-saveRDS(wb_data, file = "2_pipeline/2_out/wb_data.rds")
 
-wb_data <- readRDS("2_pipeline/2_out/wb_data.rds")
+## Drop Total Number of listed domestic companies variable
+wb_data$listedDomesticCompanies <- NULL
 
+## Fill the rest using "downup" option of the tidyr fill function (i.e. first
+## down and then up)
+
+
+# fill(volTradedGDP, .direction = "downup")
+#
+# wb %>% filter(iso2c=='VN') %>% as.data.frame %>%
+#   fill(stockMktCapGDP, .direction = "downup") %>%
 
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%

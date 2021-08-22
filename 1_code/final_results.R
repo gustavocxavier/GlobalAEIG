@@ -21,6 +21,7 @@ db_m[, R := log(P/shift(P)), by = ticker]
 db_m[ticker=="PETR4"]
 
 ## Organize ws_funda -----------------------------------------------------------
+## See TRWS.R to know how to get this data
 ws_funda <- readRDS("0_data/trws/raw_ws_funda.rds")
 
 ws_funda <- ws_funda %>%

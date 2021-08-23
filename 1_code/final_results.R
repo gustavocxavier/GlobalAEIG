@@ -409,6 +409,65 @@ wb_data <- wb_data %>%
   fill(stockMktCapGDP, .direction = "downup") %>%
   fill(volTradedGDP,   .direction = "downup")
 
+## Compute TRWS Aggregate Variables --------------------------------------------
+## To use as control variable and market development measures
+
+### DY
+aggregate_vars <- ws_stock %>% select(year, ws_id, dy) %>%
+  left_join(ws_funda %>% select(nation, nation_cod, ws_id), by = "ws_id") %>%
+  na.omit %>%
+  group_by(nation, year) %>%
+  mutate(dy = winsorize(dy)) %>%
+  summarise(DY = mean(dy, na.rm=T))
+
+### I/K
+i_k <- ws_funda %>%
+  group_by(nation, year) %>%
+  mutate(capex = winsorize(capex)) %>%
+  mutate(equity = winsorize(equity)) %>%
+  mutate(I_K = capex / equity) %>%
+  select(nation, ws_id, year, I_K) %>%
+  na.omit %>%
+  group_by(nation, year) %>%
+  mutate(I_K = winsorize(I_K)) %>%
+  summarise(I_K = mean(I_K, na.rm=T))
+
+aggregate_vars <- aggregate_vars %>% left_join(i_k)
+rm(i_k)
+
+### Turnover
+turnover <- ws_stock %>% select(year, ws_id, turnover) %>%
+  left_join(ws_funda %>% select(nation, nation_cod, ws_id), by = "ws_id") %>%
+  na.omit %>%
+  group_by(nation, year) %>%
+  mutate(turnover = winsorize(turnover)) %>%
+  summarise(turnover = mean(turnover, na.rm=T))
+
+aggregate_vars <- aggregate_vars %>% left_join(turnover)
+rm(turnover)
+
+### Volume
+trading_vol <- ws_stock %>% select(year, ws_id, tradingvol) %>%
+  left_join(ws_funda %>% select(nation, nation_cod, ws_id), by = "ws_id") %>%
+  na.omit %>%
+  group_by(nation, year) %>%
+  mutate(tradingvol = winsorize(tradingvol)) %>%
+  summarise(tradingvol = mean(tradingvol, na.rm=T)) %>%
+  mutate(tradingvol = log(tradingvol))
+
+aggregate_vars <- aggregate_vars %>% left_join(trading_vol)
+rm(trading_vol)
+
+# aggregate_vars %>% filter(is.na(I_K)) %>% View
+
+## Merge TRWS and WB data ------------------------------------------------------
+temp <- wb_data %>%
+  select(nation=country, year, interest_rate:legalRights) %>%
+  mutate(nation=toupper(nation))
+temp
+
+aggregate_vars %>% left_join(temp)
+
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%
   group_by(nation) %>%

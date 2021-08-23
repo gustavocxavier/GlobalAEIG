@@ -517,10 +517,31 @@ skimr::skim(control_vars %>% ungroup)
 lmdata <- lmdata %>% left_join(control_vars, by = c("nation", "year"))
 
 
+## Get the MSCI classification -------------------------------------------------
 classification <- readxl::read_xlsx("2_pipeline/2_out/3d_EM_DM.xlsx",
                                     col_names = c("nation", "classification"),
                                     skip = 1)
 # classification
+
+## Include the others classification from World Bank Data
+wb_classification <- wb_data %>%
+  mutate(nation = toupper(country)) %>% ungroup %>%
+  select(nation, year, stockMktCapGDP, volTradedGDP, legalRights) %>%
+  group_by(nation) %>%
+  summarise(stockMktCapGDP = median(stockMktCapGDP),
+            volTradedGDP = median(volTradedGDP),
+            legalRights = median(legalRights)) %>%
+  mutate(stockMktCapGDP = if_else(stockMktCapGDP > median(stockMktCapGDP), 1,0),
+         volTradedGDP = if_else(volTradedGDP > median(volTradedGDP), 1,0),
+         legalRights = if_else(legalRights > median(legalRights), 1,0))
+
+wb_classification <- classification %>% left_join(wb_classification) %>% as.data.table
+wb_classification[is.na(stockMktCapGDP) & classification=="DM", stockMktCapGDP := 1]
+wb_classification[is.na(stockMktCapGDP) & classification=="EM", stockMktCapGDP := 0]
+wb_classification[is.na(volTradedGDP) & classification=="DM", volTradedGDP := 1]
+wb_classification[is.na(volTradedGDP) & classification=="EM", volTradedGDP := 0]
+wb_classification[is.na(legalRights) & classification=="DM", legalRights := 1]
+wb_classification[is.na(legalRights) & classification=="EM", legalRights := 0]
 
 ## In Sample Analysis AEIG DM x EM ---------------------------------------------
 resultsAEIG <- lmdata %>% group_by(nation) %>%
@@ -542,6 +563,20 @@ resultsAEIG %>%
   filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
   group_by(classification) %>% count
 
+resultsAEIG %>%
+  left_join(wb_classification) %>%
+  filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
+  group_by(stockMktCapGDP) %>% count
+
+resultsAEIG %>%
+  left_join(wb_classification) %>%
+  filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
+  group_by(volTradedGDP) %>% count
+
+resultsAEIG %>%
+  left_join(wb_classification) %>%
+  filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
+  group_by(legalRights) %>% count
 
 library(broom)
 results <- lmdata %>% group_by(nation) %>%

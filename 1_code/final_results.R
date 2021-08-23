@@ -279,7 +279,97 @@ setDT(wb_data)
 wb_data[is.na(volTradedGDP) & !is.na(stockTradedGDP), volTradedGDP := stockTradedGDP]
 wb_data <- wb_data %>% select(-stockTradedGDP) %>% as_tibble
 
-wb_data %>% select(volTradedGDP, stockTradedGDP) %>% na.omit %>% cor
+## Check all NA
+wb_data %>% group_by(country) %>%
+  summarise(
+    na_interest_rate    = sum(is.na(interest_rate   )),
+    na_inflation        = sum(is.na(inflation       )),
+    na_stockMktCapGDP   = sum(is.na(stockMktCapGDP  )),
+    na_volTradedGDP     = sum(is.na(volTradedGDP    )),
+    na_legalRights      = sum(is.na(legalRights     ))
+  ) %>% as.data.frame -> wb_dataNA
+wb_dataNA
+
+# wb_data %>% filter(country=="Belgium") %>% as.data.frame
+# wb_data %>% filter(country=="Vietnam") %>% as.data.frame
+# wb_data %>% filter(country=="Israel") %>% as.data.frame
+# wb_data %>% filter(country=="Denmark") %>% as.data.frame
+# wb_data %>% filter(country=="Finland") %>% as.data.frame
+# wb_data %>% filter(country=="Sweden") %>% as.data.frame
+# wb_data %>% filter(country=="Brazil") %>% as.data.frame
+
+### Merge with OECD data for high-income countries
+wb_dataNA %>% filter(na_interest_rate>5) %>% select(country)
+oecd_interest <- oecd_interest %>%
+  select(country = Country, year = Time, rate_oecd = Value) %>%
+  mutate(country = if_else(country=="Russia", "Russian Federation", country))
+wb_data <- wb_data %>%
+  left_join(oecd_interest, by = c("country", "year"))
+
+wb_data %>%
+  select(interest_rate, rate_oecd) %>% na.omit %>% cor
+  # select(country, interest_rate, rate_oecd) %>% na.omit %>%
+  # mutate(dif = interest_rate - rate_oecd) %>% filter(abs(dif)>2)
+
+setDT(wb_data)
+wb_data[,interest_rate2 := interest_rate]
+wb_data[is.na(interest_rate) & !is.na(rate_oecd), interest_rate2 := rate_oecd]
+# wb_data %>% filter(iso2c=='CA')
+## Check results
+wb_data %>% group_by(iso2c) %>%
+  summarise(
+    na_interest_rate    = sum(is.na(interest_rate   )),
+    na_rate_oecd        = sum(is.na(rate_oecd       )),
+    na_interest_rate2   = sum(is.na(interest_rate2  ))
+  ) %>%
+  filter(na_interest_rate2 == 26) %>% as.data.frame
+oecd_interest$country %>% unique %>% sort
+
+### Merge with FRED data
+fred <- readRDS("2_pipeline/2_out/fred_data.rds")
+fred[series_id=="INTGSTSAM193N", iso2c := 'SA']
+fred[is.na(iso2c), iso2c := substr(series_id, 9,10)]
+fred[,year := year(date)]
+fred <- fred %>% select(iso2c, year, rate_fred=value)
+wb_data <- wb_data %>% left_join(fred) %>%
+  mutate(interest_rate3 = interest_rate2) %>%
+  mutate(interest_rate3 = if_else(
+    is.na(interest_rate3) & !is.na(rate_fred),
+    rate_fred, interest_rate3)
+  )
+
+## Check results
+wb_data %>% group_by(iso2c) %>%
+  summarise(
+    na_interest_rate    = sum(is.na(interest_rate   )),
+    na_rate_oecd        = sum(is.na(rate_oecd       )),
+    na_interest_rate2   = sum(is.na(interest_rate2  )),
+    na_interest_rate3   = sum(is.na(interest_rate3  ))
+  ) %>%
+  filter(na_interest_rate2 > 0) %>% as.data.frame
+
+## Organize data
+wb_data <- wb_data %>%
+  mutate(interest_rate = interest_rate3) %>%
+  select(-(rate_oecd:interest_rate3)) %>% as_tibble
+wb_data
+
+### Replace legalRights NA for the median of the country
+wb_data <- wb_data %>% group_by(country) %>%
+  mutate(
+    legalRights = case_when(
+      is.na(legalRights) ~ median(legalRights, na.rm = T),
+      TRUE ~ legalRights
+    )
+  ) %>%
+  mutate(legalRights = round(legalRights))
+attr(wb_data[["legalRights"]], "label") = "Strength of legal rights index (0=weak to 12=strong)"
+
+### Drop Total Number of listed domestic companies variable
+wb_data$listedDomesticCompanies <- NULL
+
+### Fill the rest using "downup" option of the tidyr fill function (i.e. first
+### down and then up)
 
 ## Check all NA
 wb_data %>% group_by(country) %>%
@@ -291,40 +381,13 @@ wb_data %>% group_by(country) %>%
     na_legalRights      = sum(is.na(legalRights     ))
   ) %>% as.data.frame
 
-wb_data %>% filter(country=="Vietnam") %>% as.data.frame
-wb_data %>% filter(country=="Israel") %>% as.data.frame
-wb_data %>% filter(country=="Denmark") %>% as.data.frame
-wb_data %>% filter(country=="Finland") %>% as.data.frame
-wb_data %>% filter(country=="Sweden") %>% as.data.frame
-wb_data %>% filter(country=="Brazil") %>% as.data.frame
-
-## Merge with OECD data for high-income countries
-# Try isreal here
-
-
-
-## Replace legalRights NA for the median of the country
-wb_data <- wb_data %>% group_by(country) %>%
-  mutate(
-    legalRights = case_when(
-      is.na(legalRights) ~ median(legalRights, na.rm = T),
-      TRUE ~ legalRights
-    )
-  ) %>%
-  mutate(legalRights = round(legalRights))
-attr(wb_data[["legalRights"]], "label") = "Strength of legal rights index (0=weak to 12=strong)"
-
-## Drop Total Number of listed domestic companies variable
-wb_data$listedDomesticCompanies <- NULL
-
-## Fill the rest using "downup" option of the tidyr fill function (i.e. first
-## down and then up)
-
-
-# fill(volTradedGDP, .direction = "downup")
-#
-# wb %>% filter(iso2c=='VN') %>% as.data.frame %>%
-#   fill(stockMktCapGDP, .direction = "downup") %>%
+## tidyr::fill
+library(tidyr)
+wb_data <- wb_data %>%
+  fill(interest_rate,  .direction = "downup") %>%
+  fill(inflation,      .direction = "downup") %>%
+  fill(stockMktCapGDP, .direction = "downup") %>%
+  fill(volTradedGDP,   .direction = "downup")
 
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%

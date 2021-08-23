@@ -466,7 +466,7 @@ temp <- wb_data %>%
   mutate(nation=toupper(nation))
 temp
 
-aggregate_vars %>% left_join(temp)
+aggregate_vars <- aggregate_vars %>% left_join(temp)
 
 ## In sample prediction --------------------------------------------------------
 lmdata <- mkt %>% left_join(AEIG) %>%
@@ -500,25 +500,29 @@ lmdata
 #
 # lmdata %>% filter(nation == "UNITED KINGDOM") %>% as.data.frame
 
-## In Sample Analysis AEIG DM x EM ---------------------------------------------
-lmdata <- mkt %>%
-  left_join(AEIG) %>%
-  group_by(nation) %>% mutate(AEIG = dplyr::lag(AEIG)) %>%
-  select(year, month, AEIG, MKT=vwret) %>% na.omit
-setDT(lmdata)
-lmdata[, MKT3M := Reduce(`+`, shift(MKT, -( 0:2))), by=nation]
-lmdata[, MKT6M := Reduce(`+`, shift(MKT, -( 0:5))), by=nation]
-lmdata[, MKT1Y := Reduce(`+`, shift(MKT, -(0:11))), by=nation]
-lmdata[, MKT2Y := Reduce(`+`, shift(MKT, -(0:23))), by=nation]
-lmdata[, MKT3Y := Reduce(`+`, shift(MKT, -(0:35))), by=nation]
-lmdata[, MKT5Y := Reduce(`+`, shift(MKT, -(0:59))), by=nation]
-#lmdata
+## Merge Control Variables -----------------------------------------------------
+aggregate_vars <- aggregate_vars %>% filter(nation %in% unique(lmdata$nation))
+
+control_vars <- aggregate_vars %>% select(nation, year, DY, I_K, interest_rate, inflation)
+
+skimr::skim(control_vars %>% ungroup)
+# Set 0 when is not availeble
+control_vars[is.na(interest_rate), interest_rate := 0]
+control_vars[is.na(inflation), inflation := 0]
+control_vars <- control_vars %>% group_by(nation) %>%
+  arrange(nation, year) %>%
+  fill(I_K,  .direction = "downup")
+skimr::skim(control_vars %>% ungroup)
+
+lmdata <- lmdata %>% left_join(control_vars, by = c("nation", "year"))
+
 
 classification <- readxl::read_xlsx("2_pipeline/2_out/3d_EM_DM.xlsx",
                                     col_names = c("nation", "classification"),
                                     skip = 1)
 # classification
 
+## In Sample Analysis AEIG DM x EM ---------------------------------------------
 resultsAEIG <- lmdata %>% group_by(nation) %>%
   # do(fitNation = tidy(lm(MKT   ~ AEIG, data = .))) %>%
   # do(fitNation = tidy(lm(MKT3M ~ AEIG, data = .))) %>%
@@ -526,6 +530,7 @@ resultsAEIG <- lmdata %>% group_by(nation) %>%
   do(fitNation = tidy(lm(MKT1Y ~ AEIG, data = .))) %>%
   # do(fitNation = tidy(lm(MKT2Y ~ AEIG, data = .))) %>%
   # do(fitNation = tidy(lm(MKT3Y ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT1Y   ~ AEIG + DY + I_K + interest_rate + inflation, data = .))) %>%
   tidyr::unnest(fitNation)
 
 resultsAEIG %>%
@@ -536,7 +541,6 @@ resultsAEIG %>%
   left_join(classification) %>%
   filter(term=="AEIG") %>% filter(abs(statistic)>2) %>%
   group_by(classification) %>% count
-
 
 
 library(broom)

@@ -265,6 +265,26 @@ oecd_cpi <- oecd_cpi %>%
 oecd_cpi      # Inflation
 oecd_interest # Interest Rate
 
+## Load FRED data --------------------------------------------------------------
+# library(fredr)
+
+## Set with your API KEY requested from FRED
+## See https://cran.r-project.org/web/packages/fredr/vignettes/fredr.html
+# fredr_set_key("5ec02d227af958ad92f44728dbb3e206") ## This an example, insert here your API KEY
+
+# fred <- rbind(
+#   fredr(series_id = c("IRSTCI01BEM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"),
+#   fredr(series_id = c("IRSTCI01DEM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"),
+#   fredr(series_id = c("IRSTCI01ESM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"), # ES
+#   fredr(series_id = c("IRSTCI01FIM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"), # FI
+#   fredr(series_id = c("IRSTCI01GRM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"), # GR
+#   fredr(series_id = c("IRSTCI01IEM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"), # IE
+#   fredr(series_id = c("IRSTCI01ITM156N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin"), # IT
+#   fredr(series_id = c("INTGSTSAM193N"), observation_start = as.Date("1995-01-01"), observation_end = as.Date("2021-07-31"), frequency = "a", units = "lin")    # SA
+# ) %>% as.data.table
+
+# saveRDS(fred, file = "2_pipeline/2_out/fred_data.rds")
+
 ## Solution for Missing Values in World Bank Data ------------------------------
 
 ## Merge stockMktCapGDP with stockMktCapGDP_2 (Correlation = 0.9733146)

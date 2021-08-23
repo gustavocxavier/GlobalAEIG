@@ -41,7 +41,7 @@ myQuery <- paste0("SELECT
                           a.item5070 as m12,
                           a.item5601 as ticker,
                           a.item6105 as ws_id,
-                          a.item9404 as DY
+                          a.item9404 as DY,
                           a.item8010 as tradingVol,
                           a.item8011 as turnover
                    FROM TRWS.WRDS_WS_STOCK as a
@@ -114,8 +114,6 @@ dbClearResult(wrdsResult)
 
 setDT(ws_funda)
 glimpse(ws_funda)
-
-dbClearResult(wrdsResult)
 
 ws_funda %>% filter(nation=="BRAZIL" & year(date)==2019) %>% arrange(ticker) %>%
   filter(ticker=="PETR4")

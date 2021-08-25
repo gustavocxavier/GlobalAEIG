@@ -512,10 +512,17 @@ control_vars[is.na(inflation), inflation := 0]
 control_vars <- control_vars %>% group_by(nation) %>%
   arrange(nation, year) %>%
   fill(I_K,  .direction = "downup")
+
 skimr::skim(control_vars %>% ungroup)
 
-lmdata <- lmdata %>% left_join(control_vars, by = c("nation", "year"))
+## Check countries with no availeble data for interest rate and inflation
+control_vars %>%
+  filter( (  is.na(interest_rate) | is.na(inflation) )  ) %>%
+  select(nation) %>% unique
 
+lmdata <- lmdata %>%
+  left_join(control_vars, by = c("nation", "year")) %>%
+  filter(!(is.na(interest_rate) | is.na(inflation))) ## Drop countries with no availeble data
 
 ## Market Development classification -------------------------------------------
 
@@ -765,3 +772,100 @@ resultsAEIG %>% group_by(h, emdm) %>% summarise(adj.r2 = abs(mean(adj.r2)*100))
 # ## Export Tables ---------------------------------------------------------------
 # xlsx::write.xlsx(results,     file = "3_output/results/mature_vs_growth.xlsx")
 # xlsx::write.xlsx(resultsAEIG, file = "3_output/results/dm_vs_em.xlsx")
+
+
+## In-sample analisys with control variables -----------------------------------
+lmdata[nation=="RUSSIAN FEDERATION", nation := "RUSSIA"]
+lmdata
+names(lmdata)[names(lmdata)=="interest_rate"] <- "interest"
+names(lmdata)[names(lmdata)=="inflation"] <- "INFL"
+lmdata
+resultsAEIG <- lmdata %>% group_by(nation) %>%
+  # do(fitNation = tidy(lm(MKT   ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT3M ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT6M ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT1Y ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT2Y ~ AEIG, data = .))) %>%
+  # do(fitNation = tidy(lm(MKT3Y ~ AEIG, data = .))) %>%
+  do(fitNation = tidy(lm(MKT1Y   ~ AEIG + DY + I_K + interest + INFL, data = .))) %>%
+  tidyr::unnest(fitNation)
+
+all_models_coef <- resultsAEIG %>%
+  mutate(estimate2 = format(round(estimate,3), nsmall = 3)) %>%
+  mutate(estimate = case_when(between(p.value, 0, 0.001)    ~ paste(estimate2, '***'),
+                              between(p.value, 0.001, 0.01) ~ paste(estimate2, '** '),
+                              between(p.value, 0.01, 0.05)  ~ paste(estimate2, '*  '),
+                              between(p.value, 0.05, 0.10)  ~ paste(estimate2, '   '),
+                              TRUE ~ paste(estimate2, '   '))) %>%
+  select(nation, term, estimate) %>%
+  pivot_wider(names_from = term, values_from = estimate) %>%
+  mutate(order = 1) %>%
+  as.data.frame
+
+all_models_stat <- resultsAEIG %>%
+  mutate(statistic = format(round(statistic,3), nsmall = 3)) %>%
+  mutate(statistic = paste0('(',statistic,')')) %>%
+  # mutate(statistic = if_else(estimate==0, "", statistic)) %>%
+  # mutate(statistic = if_else(is.na(estimate), "", statistic)) %>%
+  select(nation, term, statistic) %>%
+  pivot_wider(names_from = term, values_from = statistic) %>%
+  mutate(order = 2) %>%
+  as.data.frame
+
+r_table <- rbind(all_models_coef, all_models_stat) %>%
+  arrange(nation, order) %>%
+  mutate(nation = if_else(order==2, "", nation)) %>%
+  select(-order)
+head(r_table)
+colnames(r_table)[colnames(r_table)=="I_K"] <- "I/K"
+colnames(r_table)[1] <- "" # Remove nation column
+
+table_title <- "Tabela Teste Controles"
+table_label <- "tab:tabelaTeste"
+library(xtable)
+tex_table <- print(
+  xtable(
+    x = r_table
+    , caption = table_title
+    # , label = "tab:TabelaTeste"
+    , align = c(rep("l", ncol(r_table)+1))
+    , digits = c(rep(3, ncol(r_table)+1))
+  )
+
+  , table.placement = "H"
+  , caption.placement = "top"
+  , include.rownames = FALSE
+  , include.colnames = TRUE
+  , size = "footnotesize"
+  , tabular.environment = 'longtable'
+  , floating = FALSE
+  , add.to.row = list(pos = list(0),command =
+                        paste(" \\hline", "\n","\\endfirsthead\n",                  # First caption
+
+                              "\\multicolumn{", ncol(r_table) , "}{l}","\n",
+                              "{{\\textit Table \\thetable\\\ continued from previous page}} \\", "\n",
+
+                              # "\\label{tab:r_table} \\\\", "\n",
+                              paste0("\\label{", table_label,"} \\\\"), "\n",
+                              "\\hline\n", # Additional captions
+                              paste("&", colnames(r_table)[-1],collapse=" "),                              # Column names
+
+                              # paste(" &", colnames(x)[-1]), # Column names
+                              "\\\\ \\hline", "\n",
+                              # \endhead
+                              # \hline
+                              # \multicolumn{ 7 }{l} {\textit{Continued}} \
+                              # \endfoot
+                              # \endlastfoot \hline
+                              #
+                              "\\endhead", "\n",
+                              "\\hline", "\n",
+                              "\\multicolumn{", ncol(r_table) , "}{l}",
+                              "{\\textit{Continued}} \\", "\n",
+                              "\\endfoot", "\n",
+                              "\\endlastfoot", collapse=" ")))
+## Copy to clipboard
+clipr::write_clip(tex_table)
+## To tidy the latex code go to:
+## http://latexformat.com/
+## Then copy and paste in your latex editor
